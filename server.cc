@@ -1,12 +1,17 @@
 #include "server.h"
-
+std::mutex mymutex;
+std::condition_variable cv;
+std::mutex mymutex2;
+std::mutex mymutex3;
 Server::Server(int port)
 {
+	cout<<"i get created ";
 	port_=port;
 	// setup variables
 	buflen_ = 1024;
 	mybuffer = new char[buflen_ + 1];
 	cache = "";
+	
 }
 
 const string okaymessage="OK\n";
@@ -51,8 +56,8 @@ void Server::create()
 
     // call bind to associate the socket with our local address and
     // port  find my socket 
-    if (bind(server_,(const struct sockaddr *)&server_addr,sizeof(server_addr)) < 0) {
-        perror("bind");
+   if (bind(server_,(const struct sockaddr *)&server_addr,sizeof(server_addr)) < 0) {
+       perror("bind");
         exit(-1);
     }
 
@@ -69,6 +74,31 @@ void Server::close_socket()
 	 close(server_);
 }
 
+void * Server::handleClient(void *data)
+{
+    Server *thisServer = (Server*)data; 
+    while(1)
+    {
+    	while(thisServer->clientQueue.size()<1)
+    	{
+    		std::unique_lock<std::mutex> lck(mymutex);
+    		cv.wait(lck);
+    	}
+    	if(thisServer->clientQueue.size()>0)
+    	{
+    	mymutex2.lock();	
+        int client = thisServer->clientQueue.front();
+        thisServer->clientQueue.pop();
+        ClientManager manager(client,thisServer->buflen_);
+        mymutex2.unlock();         
+        thisServer->handle(manager);
+        
+    	}
+    }
+    return data; //does nothing
+
+}
+
 void Server::serve()
 {
 	// setup client
@@ -76,45 +106,59 @@ void Server::serve()
 	struct sockaddr_in client_addr;
 	socklen_t clientlen = sizeof(client_addr);
 
+
+	for(int i=0; i<10; i++)//new code
+	{
+		pthread_t thread;
+        threads.push_back(thread);
+        pthread_create(&threads[i],NULL,&Server::handleClient, this);
+	}
+	//cout<<"i esccape the for loop of hell"<<endl;
 	// accept clients
 	while ((client = accept(server_, (struct sockaddr *) &client_addr,&clientlen)) > 0)
 	{
-	 handle(client);
-	}
+	 //Make clientQueue threadsafe
+		//cout<<"I COME HERE "<<endl;  
+		mymutex.lock();  
+        clientQueue.push(client);
+        cv.notify_all();
+        mymutex.unlock();
+      }
+      //cout<<"socket is closed now "<<endl;
 	close_socket();
 }
 
 //Will read in more if cache is consumed
-string Server::read_cache(int client, int charsIhave)
+string Server::read_cache(ClientManager &manager, int charsIhave)
 {
 	string response = "";
 
-	if (charsIhave <= cache.length())
+	if (charsIhave <= manager.cache_.length())
 	{
-		response.append(cache.substr(0, charsIhave));
-		cache = cache.substr(charsIhave);
+		response.append(manager.cache_.substr(0, charsIhave));
+		manager.cache_ = manager.cache_.substr(charsIhave);
 	}
 	else	//Read in more data
 	{
-		response.append(cache);
-		charsIhave -= cache.length();
-		cache = "";
+		response.append(manager.cache_);
+		charsIhave -= manager.cache_.length();
+		manager.cache_ = "";
 
 		string cacheAppend = "";
 		int howmanyIhaveread = 0;
 		while (howmanyIhaveread < charsIhave)//keep reading them
 		{
-			delete[] mybuffer;
-			mybuffer = new char[buflen_ + 1];
-			int nread = recv(client, mybuffer, buflen_, 0);
+			delete[] manager.buf_;
+			manager.buf_ = new char[buflen_ + 1];
+			int nread = recv(manager.client, manager.buf_, buflen_, 0);
 			if (nread < 0)
 			{
 				if (errno == EINTR)	// the socket call was interrupted -- try again
-					return read_cache(client, charsIhave);//from the code given to us we should do this
+					return read_cache(manager, charsIhave);//from the code given to us we should do this
 			}
 
 			howmanyIhaveread += nread;
-			cacheAppend.append(mybuffer, nread);
+			cacheAppend.append(manager.buf_, nread);
 		}
 		response.append(cacheAppend.substr(0, charsIhave));//attach em on the end
 		cache.append(cacheAppend.substr(charsIhave));
@@ -179,7 +223,7 @@ string Server::get(istringstream& requestSS)
 	return response;
 }
 
-string Server::put(int client, istringstream &requestSS)
+string Server::put(ClientManager &manager, istringstream &requestSS)
 {
 	string name, subject, response;
 	requestSS >> name;
@@ -193,7 +237,7 @@ string Server::put(int client, istringstream &requestSS)
 	}
 	else
 	{
-		string message = read_cache(client, charCount);	//Look for message in cache. If doesn't exist, read_cache will read in more.
+		string message = read_cache(manager, charCount);	//Look for message in cache. If doesn't exist, read_cache will read in more.
 		if (message.length() == 0)
 		{
 			response = invalid;
@@ -204,24 +248,27 @@ string Server::put(int client, istringstream &requestSS)
 			{
 				mymessageMap[name] = vector<Message>();//give a new vector to the map
 			}
-
+			
 			Message mymessage(subject, message);
-			mymessageMap[name].push_back(mymessage);	//Add message to map
+			mymutex3.lock();
+			mymessageMap[name].push_back(mymessage);
+			mymutex3.unlock();	//Add message to map
 			response = okaymessage;
 		}
 	}
 	return response;
 }
 
-void Server::handle(int client)
+void Server::handle(ClientManager &manager)
 {
+	//cout<<"I come to handle "<<endl;
 	// loop to handle all requests
 	while (1)
 	{
-		delete[] mybuffer;
-		mybuffer = new char[buflen_ + 1];
+		delete[] manager.buf_;
+		manager.buf_ = new char[buflen_ + 1];
 		string request, response, command;
-		request = get_request(client);		//Get request from client
+		request = get_request(manager);		//Get request from client
 		if (request.empty())	
 		{	
 			break;//If no request, done
@@ -233,7 +280,7 @@ void Server::handle(int client)
 		//handle each command  sadly can't use swtich case for strings in c++
 		if (command == "put")
 		{
-			response = put(client, requestSS);
+			response = put(manager, requestSS);
 		}	
 		else if (command == "get")
 		{
@@ -253,23 +300,23 @@ void Server::handle(int client)
 			response = invalid;
 		}
 
-		bool success = send_response(client, response); 	// send response
+		bool success = send_response(manager.client, response); 	// send response
 
 		// break if an error occurred
 		if (not success)
 			break;
 	}
-	close(client);
+	close(manager.client);
 }
 
-string Server::get_request(int client)
+string Server::get_request(ClientManager &manager)
 {
 
 	string request = "";
 	// read until we get a newline
 	while (request.find("\n") == string::npos)
 	{
-		int nread = recv(client, mybuffer, buflen_, 0);
+		int nread = recv(manager.client, manager.buf_, buflen_, 0);
 		if (nread < 0)
 		{
 			if (errno == EINTR)
@@ -285,12 +332,12 @@ string Server::get_request(int client)
 			return "";
 		}
 		// be sure to use append in case we have binary data
-		request.append(mybuffer, nread);
+		request.append(manager.buf_, nread);
 	}
 
 	//Grab request, store any additional bytes in cache
 	int nlPos = request.find('\n');
-	cache.append(request.substr(nlPos + 1));
+	manager.cache_.append(request.substr(nlPos + 1));
 	request = request.substr(0, nlPos);
 	return request;
 }

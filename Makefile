@@ -6,9 +6,9 @@ ECHO-SERVER=		echo-server.o  server.o message.o
 ECHO-CLIENT=		echo-client.o  client.o
 OBJS =			$(ECHO-CLIENT) $(ECHO-SERVER)
 
-LIBS=
+LIBS=  
 
-CCFLAGS= -g
+CCFLAGS= -g -pthread
 
 all:	echo-client echo-server
 

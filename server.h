@@ -13,7 +13,15 @@
 #include <string>
 #include <sstream>
 #include "message.h"
+#include <mutex>
+//#include <thread>
+#include "pthread.h"
+#include "Manager.h"
 using namespace std;
+#include <queue>
+#include <semaphore.h>
+#include <condition_variable>
+
 
 class Server
 {
@@ -23,19 +31,23 @@ public:
 
 	void run();
 
+
 protected:
 	void create();
 	void close_socket();
 	void serve();
 
-	void handle(int);
-	string put(int, istringstream&);
+	void handle(ClientManager&);
+	string put(ClientManager&, istringstream&);
 	string list(istringstream&);
 	string get(istringstream&);
 
-	string get_request(int);
-	string read_cache(int, int);
+    static void* handleClient(void*);
+
+	string get_request(ClientManager&);
+	string read_cache(ClientManager&, int);
 	bool send_response(int, string);
+	
 	
 	int server_;
 	int buflen_;
@@ -43,4 +55,9 @@ protected:
 	string cache;
 	int port_;
 	map<string, vector<Message> > mymessageMap;
+	vector<pthread_t> threads;
+	queue<int> clientQueue;
+
+
+
 };
