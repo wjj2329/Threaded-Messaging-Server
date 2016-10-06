@@ -16,7 +16,7 @@
 #include <mutex>
 //#include <thread>
 #include "pthread.h"
-#include "Manager.h"
+#include "ClientManager.h"
 using namespace std;
 #include <queue>
 #include <semaphore.h>

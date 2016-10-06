@@ -3,6 +3,7 @@ std::mutex mymutex;
 std::condition_variable cv;
 std::mutex mymutex2;
 std::mutex mymutex3;
+std::mutex mymutex4;
 Server::Server(int port)
 {
 	cout<<"i get created ";
@@ -76,7 +77,7 @@ void Server::close_socket()
 
 void * Server::handleClient(void *data)
 {
-    Server *thisServer = (Server*)data; 
+    Server *thisServer = (Server*)data; //cast the server to it.
     while(1)
     {
     	while(thisServer->clientQueue.size()<1)
@@ -161,7 +162,9 @@ string Server::read_cache(ClientManager &manager, int charsIhave)
 			cacheAppend.append(manager.buf_, nread);
 		}
 		response.append(cacheAppend.substr(0, charsIhave));//attach em on the end
+		mymutex4.lock();
 		cache.append(cacheAppend.substr(charsIhave));
+		mymutex4.unlock();
 	}
 
 	return response;
@@ -246,7 +249,10 @@ string Server::put(ClientManager &manager, istringstream &requestSS)
 		{
 			if (mymessageMap.count(name) == 0)
 			{
+				mymutex3.lock();
 				mymessageMap[name] = vector<Message>();//give a new vector to the map
+				mymutex3.unlock();	//Add message to map
+
 			}
 			
 			Message mymessage(subject, message);
