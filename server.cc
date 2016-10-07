@@ -78,13 +78,14 @@ void * Server::handleClient(void *data)
     Server *thisServer = (Server*)data; //cast the server to it.
     while(1)
     {
+
     	while(thisServer->clientQueue.size()<1)
     	{
     		std::unique_lock<std::mutex> lck(mymutex);
     		cv.wait(lck);
     	}
-    	if(thisServer->clientQueue.size()>0)
-    	{
+    	//if(thisServer->clientQueue.size()>0)
+    	//{
     	mymutex2.lock();	
         int client = thisServer->clientQueue.front();
         thisServer->clientQueue.pop();
@@ -92,7 +93,7 @@ void * Server::handleClient(void *data)
         mymutex2.unlock();         
         thisServer->handle(manager);
         
-    	}
+    	//}
     }
     return data; //does nothing
 
@@ -118,10 +119,10 @@ void Server::serve()
 	{
 	 //Make clientQueue threadsafe
 		//cout<<"I COME HERE "<<endl;  
-		mymutex.lock();  
-        clientQueue.push(client);
-        cv.notify_all();
-        mymutex.unlock();
+		mymutex2.lock();  
+        clientQueue.push(client);      
+        mymutex2.unlock();
+        cv.notify_one();
       }
       //cout<<"socket is closed now "<<endl;
 	close_socket();
@@ -180,13 +181,17 @@ string Server::list(istringstream &requestSS)
 		return response;
 	}
 	stringstream responseSS;
+	mymutex3.lock();
 	int numMsg = mymessageMap[name].size();
+	mymutex3.unlock();
 	responseSS << "list " << numMsg << "\n";
 	for (int i = 0; i < numMsg; ++i)
 	{
 
 		responseSS << (i + 1) << " ";
+		mymutex3.lock();
 		responseSS << mymessageMap[name][i].getSubject();
+		mymutex3.unlock();
 		responseSS << "\n";
 	}
 
@@ -202,14 +207,20 @@ string Server::get(istringstream& requestSS)
 	requestSS >> name;
 	requestSS >> index;
 	stringstream responseSS;
-	if (mymessageMap.count(name) == 0)
+	mymutex3.lock();
+	int  isempty=mymessageMap.count(name);
+	mymutex3.unlock();
+	if (isempty== 0)
 	{
 		responseSS << "error user was not found\n";
 		response=requestSS.str();
 		response = responseSS.str();
 		return response;
 	}
-	if (mymessageMap[name].size() < index || index <= 0)
+	mymutex3.lock();
+	int numindex=mymessageMap[name].size();
+	mymutex3.unlock();
+	if ( numindex< index || index <= 0)
 	{
 		responseSS << "error message does not exist with that index \n";
 		response = responseSS.str();
@@ -217,7 +228,9 @@ string Server::get(istringstream& requestSS)
 	}
 	else
 	{
+		mymutex3.lock();
 		Message getMsg = mymessageMap[name][index - 1];
+		mymutex3.unlock();
 		responseSS << "message " << getMsg.getSubject() << " ";
 		responseSS << getMsg.getMessage().length();
 		responseSS << "\n" << getMsg.getMessage();
@@ -247,13 +260,12 @@ string Server::put(ClientManager &manager, istringstream &requestSS)
 		}
 		else
 		{
+			mymutex3.lock();
 			if (mymessageMap.count(name) == 0)
-			{
-				mymutex3.lock();
+			{				
 				mymessageMap[name] = vector<Message>();//give a new vector to the map
-				mymutex3.unlock();	//Add message to map
-
 			}
+			mymutex3.unlock();	
 			
 			Message mymessage(subject, message);
 			mymutex3.lock();
@@ -271,7 +283,7 @@ void Server::handle(ClientManager &manager)
 	// loop to handle all requests
 	while (1)
 	{
-		cout<<"I handle things "<<endl;
+		//cout<<"I handle things "<<endl;
 		delete[] manager.buf_;
 		manager.buf_ = new char[buflen_ + 1];
 		string request, response, command;
@@ -284,7 +296,7 @@ void Server::handle(ClientManager &manager)
 		istringstream requestSS(request);
 		requestSS >> command;
 
-		cout<<"my command is this "<<command<<" and my queue size is this "<<clientQueue.size();
+		//cout<<"my command is this "<<command<<" and my queue size is this "<<clientQueue.size();
 		//handle each command  sadly can't use swtich case for strings in c++
 		if (command == "put")
 		{
