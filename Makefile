@@ -6,9 +6,9 @@ ECHO-SERVER=		echo-server.o  server.o message.o
 ECHO-CLIENT=		echo-client.o  client.o
 OBJS =			$(ECHO-CLIENT) $(ECHO-SERVER)
 
-LIBS=  
+LIBS=
 
-CCFLAGS= -g -pthread
+CCFLAGS= -g -pthread -std=c++11
 
 all:	echo-client echo-server
 
@@ -28,7 +28,7 @@ realclean:
 
 # These lines ensure that dependencies are handled automatically.
 %.d:	%.cc
-	$(SHELL) -ec '$(CC) -M $(CPPFLAGS) $< \
+	$(SHELL) -ec '$(CC) -M $(CCFLAGS) $< \
 		| sed '\''s/\($*\)\.o[ :]*/\1.o $@ : /g'\'' > $@; \
 		[ -s $@ ] || rm -f $@'
 
