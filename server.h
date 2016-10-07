@@ -52,7 +52,6 @@ protected:
 	int server_;
 	int buflen_;
 	char* mybuffer;
-	string cache;
 	int port_;
 	map<string, vector<Message> > mymessageMap;
 	vector<pthread_t> threads;

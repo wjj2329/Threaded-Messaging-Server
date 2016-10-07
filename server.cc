@@ -3,7 +3,7 @@ std::mutex mymutex;
 std::condition_variable cv;
 std::mutex mymutex2;
 std::mutex mymutex3;
-std::mutex mymutex4;
+//std::mutex mymutex4;
 Server::Server(int port)
 {
 	cout<<"i get created ";
@@ -11,8 +11,6 @@ Server::Server(int port)
 	// setup variables
 	buflen_ = 1024;
 	mybuffer = new char[buflen_ + 1];
-	cache = "";
-	
 }
 
 const string okaymessage="OK\n";
@@ -132,6 +130,7 @@ void Server::serve()
 //Will read in more if cache is consumed
 string Server::read_cache(ClientManager &manager, int charsIhave)
 {
+	//cout<<" The cache is read in "<<endl;
 	string response = "";
 
 	if (charsIhave <= manager.cache_.length())
@@ -162,9 +161,10 @@ string Server::read_cache(ClientManager &manager, int charsIhave)
 			cacheAppend.append(manager.buf_, nread);
 		}
 		response.append(cacheAppend.substr(0, charsIhave));//attach em on the end
-		mymutex4.lock();
-		cache.append(cacheAppend.substr(charsIhave));
-		mymutex4.unlock();
+		//mymutex4.lock();
+		//cout<<"I DO THIS "<<endl;
+		manager.cache_.append(cacheAppend.substr(charsIhave));
+		//mymutex4.unlock();
 	}
 
 	return response;
@@ -271,6 +271,7 @@ void Server::handle(ClientManager &manager)
 	// loop to handle all requests
 	while (1)
 	{
+		cout<<"I handle things "<<endl;
 		delete[] manager.buf_;
 		manager.buf_ = new char[buflen_ + 1];
 		string request, response, command;
@@ -283,6 +284,7 @@ void Server::handle(ClientManager &manager)
 		istringstream requestSS(request);
 		requestSS >> command;
 
+		cout<<"my command is this "<<command<<" and my queue size is this "<<clientQueue.size();
 		//handle each command  sadly can't use swtich case for strings in c++
 		if (command == "put")
 		{
@@ -298,7 +300,9 @@ void Server::handle(ClientManager &manager)
 		}
 		else if (command == "reset")
 		{
+			mymutex3.lock();
 			mymessageMap = map<string, vector<Message> >();
+			mymutex3.unlock();
 			response = okaymessage;
 		}
 		else
