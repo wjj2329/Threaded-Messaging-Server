@@ -14,14 +14,11 @@
 #include <sstream>
 #include "message.h"
 #include <mutex>
-//#include <thread>
 #include "pthread.h"
 #include "ClientManager.h"
-using namespace std;
 #include <queue>
-#include <semaphore.h>
 #include <condition_variable>
-
+using namespace std;
 
 class Server
 {
@@ -42,7 +39,7 @@ protected:
 	string list(istringstream&);
 	string get(istringstream&);
 
-    static void* handleClient(void*);
+    static void* handleClient(void*);  //apparently wouldn't work without being static
 
 	string get_request(ClientManager&);
 	string read_cache(ClientManager&, int);
