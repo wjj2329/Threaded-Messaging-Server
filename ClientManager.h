@@ -1,24 +1,28 @@
 #pragma once
 #include <string>
+using namespace std;
 
-class ClientManager
+struct ClientManager
 {
-    public:
-        ClientManager(int client, int bufLen) 
+        char* buf_;   
+        string cache_;     
+        int bufsize;
+        int client;  
+
+
+
+        ClientManager(int client, int bufsize) 
         {
+           this->bufsize = bufsize;
            this->client = client;
-           this->bufLen = bufLen;
-           buf_ = new char[bufLen+1];
+           buf_ = new char[bufsize+1];
         }
         
-        ~ClientManager()
+        ~ClientManager()//no memory leaks
         {
-            delete[] buf_;
+            delete[] buf_; 
         }
-              
-        int bufLen;
-        int client;
-        char* buf_;
-        std::string cache_;
+        
+    
 
 };

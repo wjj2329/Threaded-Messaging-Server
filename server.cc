@@ -1,12 +1,11 @@
 #include "server.h"
-std::mutex mymutex;
-std::condition_variable cv;
-std::mutex mymutex2;
-std::mutex mymutex3;
-//std::mutex mymutex4;
+mutex mymutex; //for the unique lock
+condition_variable cv;
+mutex queuemutex;
+mutex mapmutex;
+
 Server::Server(int port)
 {
-	cout<<"i get created ";
 	port_=port;
 	// setup variables
 	buflen_ = 1024;
@@ -73,58 +72,51 @@ void Server::close_socket()
 	 close(server_);
 }
 
-void * Server::handleClient(void *data)
+void * Server::handleClient(void *serverdata)
 {
-    Server *thisServer = (Server*)data; //cast the server to it.
+    Server *thisServer = (Server*)serverdata; //cast the server to it.
     while(1)
     {
-
+    	//only one thread released at a time. 
     	while(thisServer->clientQueue.size()<1)
     	{
-    		std::unique_lock<std::mutex> lck(mymutex);
+    		std::unique_lock<std::mutex> lck(mymutex);//this is what c++.com said to do. 
     		cv.wait(lck);
     	}
-    	//if(thisServer->clientQueue.size()>0)
-    	//{
-    	mymutex2.lock();	
+    	queuemutex.lock();	
         int client = thisServer->clientQueue.front();
         thisServer->clientQueue.pop();
         ClientManager manager(client,thisServer->buflen_);
-        mymutex2.unlock();         
+        queuemutex.unlock();         
         thisServer->handle(manager);
-        
-    	//}
     }
-    return data; //does nothing
+    return serverdata; //does nothing just to stop warning
 
 }
 
 void Server::serve()
 {
-	// setup client
 	int client;
 	struct sockaddr_in client_addr;
 	socklen_t clientlen = sizeof(client_addr);
 
 
-	for(int i=0; i<10; i++)//new code
+	for(int i=0; i<10; i++)//creates threads
 	{
 		pthread_t thread;
-        threads.push_back(thread);
-        pthread_create(&threads[i],NULL,&Server::handleClient, this);
+        threads.push_back(thread);   
+        pthread_create(&threads[i],NULL,&Server::handleClient, this);//this is the way that worked on stack overflow. 
 	}
-	//cout<<"i esccape the for loop of hell"<<endl;
 	// accept clients
 	while ((client = accept(server_, (struct sockaddr *) &client_addr,&clientlen)) > 0)
 	{
-	 //Make clientQueue threadsafe
-		//cout<<"I COME HERE "<<endl;  
-		mymutex2.lock();  
+	 //Make clientQueue threadsafe and then notify the threads to go to work
+		queuemutex.lock();  
         clientQueue.push(client);      
-        mymutex2.unlock();
+        queuemutex.unlock();
         cv.notify_one();
       }
-      //cout<<"socket is closed now "<<endl;
+
 	close_socket();
 }
 
@@ -161,11 +153,9 @@ string Server::read_cache(ClientManager &manager, int charsIhave)
 			howmanyIhaveread += nread;
 			cacheAppend.append(manager.buf_, nread);
 		}
-		response.append(cacheAppend.substr(0, charsIhave));//attach em on the end
-		//mymutex4.lock();
-		//cout<<"I DO THIS "<<endl;
+		response.append(cacheAppend.substr(0, charsIhave));//attach em on the end		
 		manager.cache_.append(cacheAppend.substr(charsIhave));
-		//mymutex4.unlock();
+
 	}
 
 	return response;
@@ -181,17 +171,17 @@ string Server::list(istringstream &requestSS)
 		return response;
 	}
 	stringstream responseSS;
-	mymutex3.lock();
+	mapmutex.lock();
 	int numMsg = mymessageMap[name].size();
-	mymutex3.unlock();
+	mapmutex.unlock();
 	responseSS << "list " << numMsg << "\n";
 	for (int i = 0; i < numMsg; ++i)
 	{
 
 		responseSS << (i + 1) << " ";
-		mymutex3.lock();
+		mapmutex.lock();
 		responseSS << mymessageMap[name][i].getSubject();
-		mymutex3.unlock();
+		mapmutex.unlock();
 		responseSS << "\n";
 	}
 
@@ -207,9 +197,9 @@ string Server::get(istringstream& requestSS)
 	requestSS >> name;
 	requestSS >> index;
 	stringstream responseSS;
-	mymutex3.lock();
+	mapmutex.lock();
 	int  isempty=mymessageMap.count(name);
-	mymutex3.unlock();
+	mapmutex.unlock();
 	if (isempty== 0)
 	{
 		responseSS << "error user was not found\n";
@@ -217,9 +207,9 @@ string Server::get(istringstream& requestSS)
 		response = responseSS.str();
 		return response;
 	}
-	mymutex3.lock();
+	mapmutex.lock();
 	int numindex=mymessageMap[name].size();
-	mymutex3.unlock();
+	mapmutex.unlock();
 	if ( numindex< index || index <= 0)
 	{
 		responseSS << "error message does not exist with that index \n";
@@ -228,9 +218,9 @@ string Server::get(istringstream& requestSS)
 	}
 	else
 	{
-		mymutex3.lock();
+		mapmutex.lock();
 		Message getMsg = mymessageMap[name][index - 1];
-		mymutex3.unlock();
+		mapmutex.unlock();
 		responseSS << "message " << getMsg.getSubject() << " ";
 		responseSS << getMsg.getMessage().length();
 		responseSS << "\n" << getMsg.getMessage();
@@ -260,17 +250,17 @@ string Server::put(ClientManager &manager, istringstream &requestSS)
 		}
 		else
 		{
-			mymutex3.lock();
+			mapmutex.lock();
 			if (mymessageMap.count(name) == 0)
 			{				
 				mymessageMap[name] = vector<Message>();//give a new vector to the map
 			}
-			mymutex3.unlock();	
+			mapmutex.unlock();	
 			
 			Message mymessage(subject, message);
-			mymutex3.lock();
+			mapmutex.lock();
 			mymessageMap[name].push_back(mymessage);
-			mymutex3.unlock();	//Add message to map
+			mapmutex.unlock();	//Add message to map
 			response = okaymessage;
 		}
 	}
@@ -312,9 +302,9 @@ void Server::handle(ClientManager &manager)
 		}
 		else if (command == "reset")
 		{
-			mymutex3.lock();
+			mapmutex.lock();
 			mymessageMap = map<string, vector<Message> >();
-			mymutex3.unlock();
+			mapmutex.unlock();
 			response = okaymessage;
 		}
 		else
